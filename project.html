@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Laser Action Simulation (Enhanced)</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      color: #f0f0f0;
+      margin: 0;
+      padding: 0;
+    }
+
+    h1 {
+      margin-top: 20px;
+      color: #00ffff;
+      text-shadow: 0 0 10px #00ffff;
+    }
+
+    canvas#energyCanvas {
+      background: #1b1b1b;
+      margin-top: 20px;
+      box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+      border-radius: 10px;
+    }
+
+    .controls, .levels {
+      margin-top: 20px;
+      padding: 10px;
+    }
+
+    .laser {
+      margin-top: 20px;
+      font-size: 28px;
+      font-weight: bold;
+      color: #ff4c4c;
+      text-shadow: 0 0 8px #ff0000, 0 0 20px #ff4c4c;
+    }
+
+    input[type=range] {
+      width: 200px;
+    }
+
+    label {
+      margin-right: 10px;
+    }
+
+    button {
+      background: #0099ff;
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      margin: 5px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      box-shadow: 0 4px 10px rgba(0, 153, 255, 0.3);
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #007acc;
+    }
+
+    #chartContainer {
+      width: 90%;
+      margin: auto;
+      background: #101010;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+    }
+
+    canvas#populationChart {
+      background: #1a1a1a;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Laser Action Simulation</h1>
+
+  <div class="controls">
+    <label>Pump Rate: <span id="pumpRateLabel">70%</span></label>
+    <input type="range" id="pumpRate" min="0" max="100" value="70"><br><br>
+
+    <label>Decay Time: <span id="decayTimeLabel">1000</span> ms</label>
+    <input type="range" id="decayTime" min="100" max="3000" step="100" value="1000"><br><br>
+
+    <label>Total Atoms: <span id="atomCountLabel">50</span></label>
+    <input type="range" id="atomCount" min="10" max="200" value="50"><br><br>
+
+    <button onclick="startSimulation()">Start</button>
+    <button onclick="stopSimulation()">Stop</button>
+    <button onclick="downloadChart()">Download Chart</button>
+  </div>
+
+  <div class="levels">
+    <p>Ground State: <span id="groundCount">0</span></p>
+    <p>Excited State: <span id="excitedCount">0</span></p>
+    <p>Metastable State: <span id="metaCount">0</span></p>
+  </div>
+
+  <div id="laserOutput" class="laser"></div>
+  <canvas id="energyCanvas" width="600" height="300"></canvas>
+
+  <h2>Population Over Time</h2>
+  <div id="chartContainer">
+    <canvas id="populationChart"></canvas>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    const energyCanvas = document.getElementById("energyCanvas");
+    const ctx = energyCanvas.getContext("2d");
+
+    const pumpSlider = document.getElementById("pumpRate");
+    const decaySlider = document.getElementById("decayTime");
+    const atomSlider = document.getElementById("atomCount");
+
+    const pumpLabel = document.getElementById("pumpRateLabel");
+    const decayLabel = document.getElementById("decayTimeLabel");
+    const atomLabel = document.getElementById("atomCountLabel");
+
+    pumpSlider.oninput = () => pumpLabel.innerText = `${pumpSlider.value}%`;
+    decaySlider.oninput = () => decayLabel.innerText = `${decaySlider.value}`;
+    atomSlider.oninput = () => atomLabel.innerText = atomSlider.value;
+
+    let atoms = [], totalAtoms = 50, interval;
+    let timeStep = 0;
+
+    const populationData = {
+      labels: [],
+      datasets: [
+        { label: 'Ground', data: [], borderColor: 'blue', fill: false },
+        { label: 'Excited', data: [], borderColor: 'yellow', fill: false },
+        { label: 'Metastable', data: [], borderColor: 'lime', fill: false },
+      ]
+    };
+
+ const populationChart = new Chart(document.getElementById('populationChart'), {
+  type: 'line',
+  data: populationData,
+  options: {
+    scales: {
+      x: {
+        title: {
+          display: true,
+          text: 'Time Step',
+          color: '#ffffff',
+          font: {
+            size: 14,
+            weight: 'bold'
+          }
+        },
+        ticks: {
+          color: '#cccccc'
+        },
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)'
+        }
+      },
+      y: {
+        title: {
+          display: true,
+          text: 'Number of Atoms',
+          color: '#ffffff',
+          font: {
+            size: 14,
+            weight: 'bold'
+          }
+        },
+        min: 0,
+        max: totalAtoms,
+        ticks: {
+          color: '#cccccc'
+        },
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)'
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        labels: {
+          color: '#ffffff',
+          font: {
+            size: 13
+          }
+        }
+      }
+    }
+  }
+});
+
+
+    function resetAtoms() {
+      totalAtoms = parseInt(atomSlider.value);
+      atoms = [];
+      for (let i = 0; i < totalAtoms; i++) {
+        atoms.push({ state: 'ground' });
+      }
+    }
+
+    function drawEnergyLevels() {
+      ctx.clearRect(0, 0, energyCanvas.width, energyCanvas.height);
+      ctx.fillStyle = "#00FFAA";
+      ctx.font = "14px Arial";
+      ctx.fillText("Excited State", 10, 50);
+      ctx.fillText("Metastable State", 10, 150);
+      ctx.fillText("Ground State", 10, 250);
+
+      ctx.strokeStyle = "#FFFFFF";
+      ctx.beginPath();
+      ctx.moveTo(0, 60); ctx.lineTo(energyCanvas.width, 60);
+      ctx.moveTo(0, 160); ctx.lineTo(energyCanvas.width, 160);
+      ctx.moveTo(0, 260); ctx.lineTo(energyCanvas.width, 260);
+      ctx.stroke();
+    }
+
+    function updateCounts() {
+      let ground = 0, excited = 0, meta = 0;
+      atoms.forEach(atom => {
+        if (atom.state === 'ground') ground++;
+        else if (atom.state === 'excited') excited++;
+        else if (atom.state === 'metastable') meta++;
+      });
+
+      document.getElementById("groundCount").innerText = ground;
+      document.getElementById("excitedCount").innerText = excited;
+      document.getElementById("metaCount").innerText = meta;
+
+      const laserOutput = document.getElementById("laserOutput");
+      if (meta > ground) {
+        laserOutput.innerText = "LASER BEAM EMITTED!";
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(energyCanvas.width - 100, 160);
+        ctx.lineTo(energyCanvas.width - 10, 160);
+        ctx.stroke();
+      } else {
+        laserOutput.innerText = "";
+      }
+
+      populationData.labels.push(timeStep++);
+      populationData.datasets[0].data.push(ground);
+      populationData.datasets[1].data.push(excited);
+      populationData.datasets[2].data.push(meta);
+      populationChart.update();
+    }
+
+    function drawAtoms() {
+      atoms.forEach((atom, i) => {
+        const x = 30 + (i % 10) * 50;
+        const yLevels = { 'excited': 40, 'metastable': 140, 'ground': 240 };
+        const y = yLevels[atom.state];
+
+        ctx.beginPath();
+        ctx.arc(x, y, 10, 0, Math.PI * 2);
+        ctx.fillStyle = atom.state === 'ground' ? 'blue' : (atom.state === 'excited' ? 'yellow' : 'lime');
+        ctx.fill();
+      });
+    }
+
+    function runSimulationStep() {
+      const pumpRate = parseInt(pumpSlider.value);
+      const decayTime = parseInt(decaySlider.value);
+
+      atoms.forEach(atom => {
+        if (atom.state === 'ground' && Math.random() * 100 < pumpRate) {
+          atom.state = 'excited';
+        }
+      });
+
+      drawEnergyLevels();
+      updateCounts();
+      drawAtoms();
+
+      setTimeout(() => {
+        atoms.forEach(atom => {
+          if (atom.state === 'excited') {
+            atom.state = (Math.random() < 0.8) ? 'metastable' : 'ground';
+          }
+        });
+
+        drawEnergyLevels();
+        updateCounts();
+        drawAtoms();
+      }, decayTime);
+    }
+
+function startSimulation() {
+  stopSimulation();
+  resetAtoms();
+  populationData.labels = [];
+  populationData.datasets.forEach(ds => ds.data = []);
+  timeStep = 0;
+
+  // Update chart y-axis scale dynamically based on current totalAtoms
+  populationChart.options.scales.y.max = totalAtoms;
+  populationChart.update();
+
+  interval = setInterval(runSimulationStep, parseInt(decaySlider.value) + 300);
+}
+
+    function stopSimulation() {
+      clearInterval(interval);
+    }
+
+    function downloadChart() {
+      const link = document.createElement('a');
+      link.download = 'population_chart.png';
+      link.href = populationChart.toBase64Image();
+      link.click();
+    }
+  </script>
+</body>
+</html>
